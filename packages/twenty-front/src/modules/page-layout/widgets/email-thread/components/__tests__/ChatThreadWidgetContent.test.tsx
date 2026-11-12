@@ -12,6 +12,10 @@ jest.mock('@/activities/emails/hooks/useMarkAppChannelThreadAsRead', () => ({
   }),
 }));
 
+jest.mock('@/activities/emails/hooks/useSendAppChannelMessage', () => ({
+  useSendAppChannelMessage: () => ({ sendAppChannelMessage: jest.fn() }),
+}));
+
 jest.mock('@/activities/emails/hooks/useReplyConnectedAccount', () => ({
   useReplyConnectedAccount: () => mockUseReplyConnectedAccount(),
 }));
