@@ -1,5 +1,4 @@
 import { useMutation } from '@apollo/client/react';
-import { type EmailAttachment } from 'twenty-shared/types';
 
 import { getTimelineThreadsFromObjectRecord } from '@/activities/emails/graphql/queries/getTimelineThreadsFromObjectRecord';
 import { SEND_APP_CHANNEL_MESSAGE } from '@/activities/emails/graphql/mutations/sendAppChannelMessage';
@@ -16,34 +15,18 @@ export const useSendAppChannelMessage = () => {
     SendAppChannelMessageMutationVariables
   >(SEND_APP_CHANNEL_MESSAGE);
 
-  const sendAppChannelMessage = async ({
-    messageChannelId,
-    messageThreadId,
-    text,
-    attachments,
-    idempotencyKey,
-  }: {
-    messageChannelId: string;
-    messageThreadId: string;
-    text: string;
-    attachments: EmailAttachment[];
-    idempotencyKey: string;
-  }) => {
-    await sendAppChannelMessageMutation({
-      variables: {
-        input: {
-          messageChannelId,
-          messageThreadId,
-          text,
-          attachments,
-          idempotencyKey,
-        },
-      },
+  const sendAppChannelMessage = async (
+    input: SendAppChannelMessageMutationVariables['input'],
+  ) => {
+    const result = await sendAppChannelMessageMutation({
+      variables: { input },
     });
 
     await apolloCoreClient
       .refetchQueries({ include: [getTimelineThreadsFromObjectRecord] })
       .catch(() => undefined);
+
+    return result.data?.sendAppChannelMessage ?? null;
   };
 
   return { sendAppChannelMessage };

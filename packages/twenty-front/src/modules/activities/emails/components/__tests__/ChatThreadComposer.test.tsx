@@ -6,29 +6,9 @@ import userEvent from '@testing-library/user-event';
 import { ChatThreadComposer } from '@/activities/emails/components/ChatThreadComposer';
 
 const mockSendAppChannelMessage = jest.fn();
-const mockOpenAttachmentPicker = jest.fn();
 
-jest.mock('@/activities/emails/hooks/useSendAppChannelMessage', () => ({
-  useSendAppChannelMessage: () => ({
-    sendAppChannelMessage: mockSendAppChannelMessage,
-  }),
-}));
-
-jest.mock('@/file/components/AttachmentChip', () => ({
-  AttachmentChip: ({ file }: { file: { name: string } }) => (
-    <span>{file.name}</span>
-  ),
-}));
-
-jest.mock('@/activities/emails/hooks/useAttachEmailFiles', () => ({
-  useAttachEmailFiles: ({
-    onFilesAttached,
-  }: {
-    onFilesAttached: (files: { id: string; name: string }[]) => void;
-  }) => ({
-    openAttachmentPicker: () => mockOpenAttachmentPicker(onFilesAttached),
-    isUploadingAttachments: false,
-  }),
+jest.mock('@/ai/components/internal/AgentChatFilePreview', () => ({
+  AgentChatFilePreview: ({ file }: { file: File }) => <span>{file.name}</span>,
 }));
 
 describe('ChatThreadComposer', () => {
@@ -46,12 +26,10 @@ describe('ChatThreadComposer', () => {
     render(
       <I18nProvider i18n={i18n}>
         <ChatThreadComposer
-          messageThreadId="thread-id"
-          messageChannelId="channel-id"
           channelName="LinkedIn"
           recipientName="Ada"
           isDisconnected={false}
-          canAttachFiles={false}
+          onSendMessage={mockSendAppChannelMessage}
           onMessageSent={onMessageSent}
         />
       </I18nProvider>,
@@ -64,8 +42,8 @@ describe('ChatThreadComposer', () => {
 
     const [firstCall, secondCall] = mockSendAppChannelMessage.mock.calls;
 
-    expect(firstCall[0].idempotencyKey).toEqual(expect.any(String));
-    expect(secondCall[0].idempotencyKey).toBe(firstCall[0].idempotencyKey);
+    expect(firstCall[0].id).toEqual(expect.any(String));
+    expect(secondCall[0].id).toBe(firstCall[0].id);
   });
 
   it('keeps the sent message until the thread is refreshed', async () => {
@@ -82,12 +60,10 @@ describe('ChatThreadComposer', () => {
     render(
       <I18nProvider i18n={i18n}>
         <ChatThreadComposer
-          messageThreadId="thread-id"
-          messageChannelId="channel-id"
           channelName="LinkedIn"
           recipientName="Ada"
           isDisconnected={false}
-          canAttachFiles={false}
+          onSendMessage={mockSendAppChannelMessage}
           onMessageSent={onMessageSent}
         />
       </I18nProvider>,
@@ -106,24 +82,21 @@ describe('ChatThreadComposer', () => {
   });
 
   it('sends attached files without text and keeps them on retry', async () => {
-    mockOpenAttachmentPicker.mockImplementation((onFilesAttached) =>
-      onFilesAttached([{ id: 'file-id', name: 'deck.pdf' }]),
-    );
     mockSendAppChannelMessage
       .mockRejectedValueOnce(new Error('Network error'))
       .mockResolvedValueOnce(undefined);
 
     const onMessageSent = jest.fn().mockResolvedValue(undefined);
+    const deck = new File(['deck'], 'deck.pdf', { type: 'application/pdf' });
 
-    render(
+    const { container } = render(
       <I18nProvider i18n={i18n}>
         <ChatThreadComposer
-          messageThreadId="thread-id"
-          messageChannelId="channel-id"
           channelName="LinkedIn"
           recipientName="Ada"
           isDisconnected={false}
           canAttachFiles
+          onSendMessage={mockSendAppChannelMessage}
           onMessageSent={onMessageSent}
         />
       </I18nProvider>,
@@ -131,7 +104,13 @@ describe('ChatThreadComposer', () => {
 
     expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled();
 
-    await userEvent.click(screen.getByRole('button', { name: 'Attach files' }));
+    const fileInput = container.querySelector('input[type="file"]');
+
+    if (!(fileInput instanceof HTMLInputElement)) {
+      throw new Error('The composer file input is missing');
+    }
+
+    await userEvent.upload(fileInput, deck);
 
     expect(screen.getByText('deck.pdf')).toBeInTheDocument();
 
@@ -142,30 +121,10 @@ describe('ChatThreadComposer', () => {
 
     const [firstCall, secondCall] = mockSendAppChannelMessage.mock.calls;
 
-    expect(firstCall[0]).toMatchObject({
-      text: '',
-      attachments: [{ id: 'file-id', name: 'deck.pdf' }],
-    });
-    expect(secondCall[0].attachments).toEqual(firstCall[0].attachments);
-  });
-
-  it('hides the attach button when attachments are unavailable', () => {
-    render(
-      <I18nProvider i18n={i18n}>
-        <ChatThreadComposer
-          messageThreadId="thread-id"
-          messageChannelId="channel-id"
-          channelName="LinkedIn"
-          recipientName="Ada"
-          isDisconnected={false}
-          canAttachFiles={false}
-          onMessageSent={jest.fn()}
-        />
-      </I18nProvider>,
-    );
-
-    expect(
-      screen.queryByRole('button', { name: 'Attach files' }),
-    ).not.toBeInTheDocument();
+    expect(firstCall[0].text).toBe('');
+    expect(firstCall[0].files).toHaveLength(1);
+    expect(firstCall[0].files[0]).toBe(deck);
+    expect(secondCall[0].id).toBe(firstCall[0].id);
+    expect(secondCall[0].files[0]).toBe(deck);
   });
 });
